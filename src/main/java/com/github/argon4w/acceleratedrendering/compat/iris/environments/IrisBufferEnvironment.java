@@ -87,8 +87,8 @@ public class IrisBufferEnvironment implements IBufferEnvironment {
     }
 
     @Override
-    public int getSharingFlags() {
-        return getSubSet().getSharingFlags();
+    public int getFlags(VertexFormat.Mode mode) {
+        return getSubSet().getFlags(mode);
     }
 
     @Override
@@ -173,8 +173,8 @@ public class IrisBufferEnvironment implements IBufferEnvironment {
         }
 
         @Override
-        public int getSharingFlags() {
-            return cullingProgramSelector.getSharingFlags();
+        public int getFlags(VertexFormat.Mode mode) {
+            return cullingProgramSelector.getFlags(mode);
         }
 
         @Override

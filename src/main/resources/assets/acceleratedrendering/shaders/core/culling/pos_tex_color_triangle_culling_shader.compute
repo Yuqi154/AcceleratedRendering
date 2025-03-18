@@ -4,37 +4,27 @@ struct Vertex {
     float x;
     float y;
     float z;
-    int color;
     float u0;
     float v0;
-    int uv1;
-    int uv2;
-    uint normal;
-    uint iris_data_0;
-    uint iris_data_1;
-    uint iris_data_2;
-    uint iris_data_3;
-    uint iris_data_4;
+    int color;
 };
 
 struct VaryingData {
     int offset;
     int sharing;
+    int mesh;
+    int flags;
 };
 
 struct SharingData {
     mat4 transform;
     mat3 normal;
-    uint flags;
-    int mesh;
-    uint extra_data_1;
-    uint extra_data_2;
 };
 
 struct Polygon {
-    int vertex1;
-    int vertex2;
-    int vertex3;
+    uint vertex1;
+    uint vertex2;
+    uint vertex3;
 };
 
 layout(local_size_x = 128) in;
@@ -51,10 +41,6 @@ layout(binding=3, std430) readonly buffer Varyings {
     VaryingData varyings[];
 };
 
-layout(binding=5, std430) readonly buffer PolygonsIn {
-    Polygon polygonsIn[];
-};
-
 layout(binding=6, std430) writeonly buffer PolygonsOut {
     Polygon polygonsOut[];
 };
@@ -63,38 +49,49 @@ layout(binding=0, offset=0) uniform atomic_uint indexCounter;
 
 layout(location=0) uniform mat4 viewMatrix;
 layout(location=1) uniform uint polygonCount;
+layout(location=2) uniform uint vertexOffset;
 
-bool isNormalVisable(Vertex vertex);
+bool isNormalVisable(vec3 pos, vec3 normal);
 
 void main() {
     uint index = gl_GlobalInvocationID.x;
+    uint base = index * 3u;
 
     if (index >= polygonCount) {
         return;
     }
 
-    Polygon polygon = polygonsIn[index];
+    uint index1 = vertexOffset + base + 0u;
+    uint index2 = vertexOffset + base + 1u;
+    uint index3 = vertexOffset + base + 2u;
 
-    int sharing = varyings[index - varyings[polygon.vertex1].offset].sharing;
-    uint flags = sharing != -1 ? sharings[sharing].flags : 0u;
+    uint flags = varyings[index - varyings[index1].offset].flags;
     uint noCull = flags & 0x1u;
 
+    Vertex vertex1 = vertices[index1];
+    Vertex vertex2 = vertices[index2];
+    Vertex vertex3 = vertices[index3];
+
+    vec3 pos1 = vec3(vertex1.x, vertex1.y, vertex1.z);
+    vec3 pos2 = vec3(vertex2.x, vertex2.y, vertex2.z);
+    vec3 pos3 = vec3(vertex3.x, vertex3.y, vertex3.z);
+    vec3 normal = cross(pos2 - pos1, pos3 - pos1);
+
     if (noCull > 0u
-            || isNormalVisable(vertices[polygon.vertex1])
-            || isNormalVisable(vertices[polygon.vertex2])
-            || isNormalVisable(vertices[polygon.vertex3])
+            || isNormalVisable(pos1, normal)
+            || isNormalVisable(pos2, normal)
+            || isNormalVisable(pos3, normal)
     ) {
         uint indexOut = atomicCounterAdd(indexCounter, 3u) / 3u;
 
-        polygonsOut[indexOut].vertex1 = polygon.vertex1;
-        polygonsOut[indexOut].vertex2 = polygon.vertex2;
-        polygonsOut[indexOut].vertex3 = polygon.vertex3;
+        polygonsOut[indexOut].vertex1 = index1;
+        polygonsOut[indexOut].vertex2 = index2;
+        polygonsOut[indexOut].vertex3 = index3;
     }
 }
 
-bool isNormalVisable(Vertex vertex) {
-    vec3 normal = unpackSnorm4x8(vertex.normal).xyz;
-    vec4 posStart = vec4(vertex.x, vertex.y, vertex.z, 1.0);
+bool isNormalVisable(vec3 pos, vec3 normal) {
+    vec4 posStart = vec4(pos, 1.0);
     vec4 posEnd = posStart + vec4(normal, 0.0);
 
     posStart = viewMatrix * posStart;

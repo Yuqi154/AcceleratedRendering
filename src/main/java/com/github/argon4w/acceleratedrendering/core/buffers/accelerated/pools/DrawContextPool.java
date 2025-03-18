@@ -1,7 +1,6 @@
 package com.github.argon4w.acceleratedrendering.core.buffers.accelerated.pools;
 
 import com.github.argon4w.acceleratedrendering.core.gl.buffers.IServerBuffer;
-import com.github.argon4w.acceleratedrendering.core.gl.buffers.IServerBufferSegment;
 import com.github.argon4w.acceleratedrendering.core.gl.buffers.SegmentBuffer;
 import com.github.argon4w.acceleratedrendering.core.utils.SimpleResetPool;
 import com.mojang.blaze3d.vertex.VertexFormat;
@@ -19,7 +18,7 @@ public class DrawContextPool extends SimpleResetPool<DrawContextPool.IndirectDra
     }
 
     @Override
-    protected IndirectDrawContext create(SegmentBuffer buffer) {
+    protected IndirectDrawContext create(SegmentBuffer buffer, int i) {
         return new IndirectDrawContext(buffer.getSegment(20L));
     }
 
@@ -49,7 +48,7 @@ public class DrawContextPool extends SimpleResetPool<DrawContextPool.IndirectDra
 
         private int cachedOffset;
 
-        public IndirectDrawContext(IServerBufferSegment commandBuffer) {
+        public IndirectDrawContext(IServerBuffer commandBuffer) {
             this.commandOffset = commandBuffer.getOffset();
             this.commandBuffer = commandBuffer;
             this.commandBuffer.subData(0, new int[] {0, 1, 0, 0, 0});
@@ -57,9 +56,9 @@ public class DrawContextPool extends SimpleResetPool<DrawContextPool.IndirectDra
             this.cachedOffset = -1;
         }
 
-        public void bindComputeBuffers(ElementBufferPool.ElementBuffer elementBufferIn) {
-            IServerBufferSegment elementBufferOut = elementBufferIn.getSegmentOut();
-            int elementOffset = (int) elementBufferOut.getOffset();
+        public void bindComputeBuffers(ElementBufferPool.ElementSegment elementSegmentIn) {
+            IServerBuffer elementBufferOut = elementSegmentIn.getBuffer();
+            int elementOffset = elementBufferOut.getOffset();
 
             if (cachedOffset != elementOffset) {
                 cachedOffset = elementOffset;
@@ -68,8 +67,6 @@ public class DrawContextPool extends SimpleResetPool<DrawContextPool.IndirectDra
 
             commandBuffer.clearInteger(0, 0);
             commandBuffer.bindBase(GL_ATOMIC_COUNTER_BUFFER, 0);
-
-            elementBufferIn.bindBase(GL_SHADER_STORAGE_BUFFER, 5);
             elementBufferOut.bindBase(GL_SHADER_STORAGE_BUFFER, 6);
         }
 

@@ -47,12 +47,25 @@ public class ImmutableBuffer implements IServerBuffer {
         );
     }
 
+    public void flush(long length) {
+        glFlushMappedNamedBufferRange(
+                bufferHandle,
+                0,
+                length
+        );
+    }
+
     public void unmap() {
         glUnmapNamedBuffer(bufferHandle);
     }
 
     public void delete() {
         glDeleteBuffers(bufferHandle);
+    }
+
+    @Override
+    public int getOffset() {
+        return 0;
     }
 
     @Override

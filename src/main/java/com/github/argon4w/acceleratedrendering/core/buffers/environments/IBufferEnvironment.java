@@ -21,7 +21,7 @@ public interface IBufferEnvironment {
     IPolygonProgramDispatcher selectProcessingProgramDispatcher(VertexFormat.Mode mode);
     RenderType getRenderType(RenderType renderType);
     int getOffset(VertexFormatElement element);
-    int getSharingFlags();
+    int getFlags(VertexFormat.Mode mode);
     int getVertexSize();
 
     class Presets {
