@@ -1,176 +1,207 @@
 package com.github.argon4w.acceleratedrendering.features.items.mixins;
 
-import com.github.argon4w.acceleratedrendering.core.buffers.builders.IAcceleratedVertexConsumer;
+import com.github.argon4w.acceleratedrendering.core.buffers.accelerated.builders.IAcceleratedVertexConsumer;
+import com.github.argon4w.acceleratedrendering.core.buffers.accelerated.renderers.IAcceleratedRenderer;
+import com.github.argon4w.acceleratedrendering.core.buffers.graphs.IBufferGraph;
 import com.github.argon4w.acceleratedrendering.core.meshes.IMesh;
 import com.github.argon4w.acceleratedrendering.core.meshes.MeshCollector;
-import com.github.argon4w.acceleratedrendering.core.utils.CullerUtils;
-import com.github.argon4w.acceleratedrendering.core.utils.TextureUtils;
+import com.github.argon4w.acceleratedrendering.core.utils.*;
+import com.github.argon4w.acceleratedrendering.features.items.AcceleratedItemRenderContext;
 import com.github.argon4w.acceleratedrendering.features.items.AcceleratedItemRenderingFeature;
-import com.github.argon4w.acceleratedrendering.features.items.EmptyItemColor;
 import com.github.argon4w.acceleratedrendering.features.items.IAcceleratedBakedModel;
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import it.unimi.dsi.fastutil.ints.Int2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.color.item.ItemColor;
-import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.resources.model.SimpleBakedModel;
 import net.minecraft.core.Direction;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.client.model.IQuadTransformer;
+import org.jetbrains.annotations.Nullable;
+import org.joml.Matrix3f;
+import org.joml.Matrix4f;
+import org.joml.Vector2f;
 import org.joml.Vector3f;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 @Mixin(SimpleBakedModel.class)
-public class SimpleBakedModelMixin implements IAcceleratedBakedModel {
+public abstract class SimpleBakedModelMixin implements IAcceleratedBakedModel, IAcceleratedRenderer<AcceleratedItemRenderContext> {
 
-    @Shadow @Final protected List<BakedQuad> unculledFaces;
-    @Shadow @Final protected Map<Direction, List<BakedQuad>> culledFaces;
+    @Shadow public abstract List<BakedQuad> getQuads(BlockState pState, Direction pDirection, RandomSource pRandom);
 
-    @Unique private final Map<RenderType, Int2ObjectMap<IMesh>> meshes = new Object2ObjectOpenHashMap<>();;
+    @Unique private final Map<IBufferGraph, Int2ObjectMap<IMesh>> meshes = new Object2ObjectOpenHashMap<>();
 
     @Override
     public void renderItemFast(ItemStack itemStack, PoseStack poseStack, IAcceleratedVertexConsumer extension, int combinedLight, int combinedOverlay) {
         PoseStack.Pose pose = poseStack.last();
-        ItemColor itemColor = ((ItemColorsAccessor) Minecraft.getInstance().getItemColors()).getItemColors().getOrDefault(itemStack.getItem(), EmptyItemColor.INSTANCE);
 
-        extension.beginTransform(pose.pose(), pose.normal());
+        extension.doRender(
+                this,
+                new AcceleratedItemRenderContext(
+                        itemStack,
+                        null,
+                        null
+                ),
+                pose.pose(),
+                pose.normal(),
+                combinedLight,
+                combinedOverlay,
+                -1
+        );
+    }
 
-        for (RenderType renderType : extension.getRenderTypes()) {
-            Int2ObjectMap<IMesh> layers = meshes.get(renderType);
+    @Override
+    public void render(
+            VertexConsumer vertexConsumer,
+            AcceleratedItemRenderContext context,
+            Matrix4f transform,
+            Matrix3f normal,
+            int light,
+            int overlay,
+            int color
+    ) {
+        ItemStack itemStack = context.getItemStack();
+        ItemColor itemColor = context.getItemColor();
+        IAcceleratedVertexConsumer extension = (IAcceleratedVertexConsumer) vertexConsumer;
 
-            if (layers != null) {
-                for (int layer : layers.keySet()) {
-                    IMesh mesh = layers.get(layer);
+        IBufferGraph bufferGraph = extension.getBufferGraph();
+        RenderType renderType = bufferGraph.getRenderType();
 
-                    mesh.write(
-                            extension,
-                            itemColor.getColor(itemStack, layer),
-                            combinedLight,
-                            combinedOverlay
-                    );
-                }
+        Int2ObjectMap<IMesh> layers = meshes.get(bufferGraph);
 
-                continue;
+        extension.beginTransform(transform, normal);
+
+        if (layers != null) {
+            for (int layer : layers.keySet()) {
+                IMesh mesh = layers.get(layer);
+
+                mesh.write(
+                        extension,
+                        getCustomColor(layer, itemColor.getColor(itemStack, layer)),
+                        light,
+                        overlay
+                );
             }
 
-            layers = new Int2ObjectLinkedOpenHashMap<>();
-            meshes.put(renderType, layers);
+            extension.endTransform();
+            return;
+        }
 
-            IMesh.Builder builder = AcceleratedItemRenderingFeature.getMeshBuilder();
-            Int2ObjectMap<MeshCollector> meshCollectors = new Int2ObjectLinkedOpenHashMap<>();
-            NativeImage image = TextureUtils.downloadTexture(renderType, 0);
-            List<BakedQuad> allFaces = new ArrayList<>(unculledFaces);
+        layers = new Int2ObjectLinkedOpenHashMap<>();
+        meshes.put(bufferGraph, layers);
 
-            for (Direction direction : culledFaces.keySet()) {
-                allFaces.addAll(culledFaces.get(direction));
-            }
+        IntLazyMap<MeshCollector> meshCollectors = new IntLazyMap<>(new Int2ObjectLinkedOpenHashMap<>(), () -> new MeshCollector(renderType.format));
+        NativeImage texture = TextureUtils.downloadTexture(renderType, 0);
 
-            for (BakedQuad quad : allFaces) {
-                int[] vertices = quad.getVertices();
-                int layer = quad.getTintIndex();
-                int size = vertices.length / 8;
+        for (Direction direction : DirectionUtils.FULL) {
+            for (BakedQuad quad : getQuads(null, direction, null)) {
+                MeshCollector meshCollector = meshCollectors.get(quad.getTintIndex());
+                VertexConsumer meshBuilder = extension.decorate(meshCollector);
 
-                MeshCollector meshCollector = meshCollectors.get(layer);
-
-                if (meshCollector == null) {
-                    meshCollector = builder.newMeshCollector(renderType);
-                    meshCollectors.put(layer, meshCollector);
-                }
-
-                ModelPart.Vertex[] modelVertices = new ModelPart.Vertex[size];
-                int[] modelColors = new int[size];
-                Vector3f[] modelNormals = new Vector3f[size];
+                int[] data = quad.getVertices();
+                int size = data.length / 8;
+                Vertex[] polygon = new Vertex[size];
 
                 for (int i = 0; i < size; i++) {
                     int vertexOffset = i * IQuadTransformer.STRIDE;
                     int posOffset = vertexOffset + IQuadTransformer.POSITION;
                     int colorOffset = vertexOffset + IQuadTransformer.COLOR;
                     int uv0Offset = vertexOffset + IQuadTransformer.UV0;
+                    int uv2Offset = vertexOffset + IQuadTransformer.UV2;
                     int normalOffset = vertexOffset + IQuadTransformer.NORMAL;
 
-                    float posX = Float.intBitsToFloat(vertices[posOffset + 0]);
-                    float posY = Float.intBitsToFloat(vertices[posOffset + 1]);
-                    float posZ = Float.intBitsToFloat(vertices[posOffset + 2]);
+                    float posX = Float.intBitsToFloat(data[posOffset + 0]);
+                    float posY = Float.intBitsToFloat(data[posOffset + 1]);
+                    float posZ = Float.intBitsToFloat(data[posOffset + 2]);
 
-                    int packedColor = vertices[colorOffset];
+                    float u0 = Float.intBitsToFloat(data[uv0Offset + 0]);
+                    float v0 = Float.intBitsToFloat(data[uv0Offset + 1]);
 
-                    float u0 = Float.intBitsToFloat(vertices[uv0Offset + 0]);
-                    float v0 = Float.intBitsToFloat(vertices[uv0Offset + 1]);
+                    int packedColor = data[colorOffset];
+                    int packedLight = data[uv2Offset];
+                    int packedNormal = data[normalOffset];
 
-                    int packedNormal = vertices[normalOffset];
                     float normalX = ((byte) (packedNormal & 0xFF)) / 127.0f;
                     float normalY = ((byte) ((packedNormal >> 8) & 0xFF)) / 127.0f;
                     float normalZ = ((byte) ((packedNormal >> 16) & 0xFF)) / 127.0f;
 
-                    modelVertices[i] = new ModelPart.Vertex(posX, posY, posZ, u0, v0);
-                    modelColors[i] = packedColor;
-                    modelNormals[i] = new Vector3f(normalX, normalY, normalZ);
+                    polygon[i] = new Vertex(
+                            new Vector3f(posX, posY, posZ),
+                            new Vector2f(u0, v0),
+                            new Vector3f(normalX, normalY, normalZ),
+                            packedColor,
+                            packedLight
+                    );
                 }
 
-                if (!CullerUtils.shouldCull(modelVertices, image)) {
-                    for (int i = 0; i < size; i++) {
-                        ModelPart.Vertex vertex = modelVertices[i];
-                        int packedColor = modelColors[i];
-                        Vector3f normal = modelNormals[i];
+                if (!CullerUtils.shouldCull(
+                        polygon,
+                        texture,
+                        bufferGraph
+                )) {
+                    for (int i = 0; i < size; i ++) {
+                        Vertex vertex = polygon[i];
 
-                        meshCollector.addVertex(
-                                vertex.pos.x,
-                                vertex.pos.y,
-                                vertex.pos.z,
-                                packedColor,
-                                vertex.u,
-                                vertex.v,
-                                combinedOverlay,
-                                combinedLight,
-                                normal.x,
-                                normal.y,
-                                normal.z
+                        Vector3f vertexPosition = vertex.getPosition();
+                        Vector2f vertexUV = vertex.getUv();
+                        Vector3f vertexNormal = vertex.getNormal();
+
+                        meshBuilder.addVertex(
+                                vertexPosition.x,
+                                vertexPosition.y,
+                                vertexPosition.z,
+                                vertex.getColor(),
+                                vertexUV.x,
+                                vertexUV.y,
+                                overlay,
+                                vertex.getLight(),
+                                vertexNormal.x,
+                                vertexNormal.y,
+                                vertexNormal.z
                         );
                     }
                 }
             }
+        }
 
-            for (int layer : meshCollectors.keySet()) {
-                MeshCollector meshCollector = meshCollectors.get(layer);
-                IMesh mesh = builder.build(meshCollector);
+        for (int layer : meshCollectors.keySet()) {
+            IMesh mesh = AcceleratedItemRenderingFeature.getMeshBuilder().build(meshCollectors.get(layer));
 
-                layers.put(layer, mesh);
-                mesh.write(
-                        extension,
-                        itemColor.getColor(itemStack, layer),
-                        combinedLight,
-                        combinedOverlay
-                );
-            }
+            layers.put(layer, mesh);
+            mesh.write(
+                    extension,
+                    getCustomColor(layer, itemColor.getColor(itemStack, layer)),
+                    light,
+                    overlay
+            );
         }
 
         extension.endTransform();
     }
 
+
+    @Unique
     @Override
     public boolean isAccelerated() {
         return true;
     }
 
+    @Unique
     @Override
-    public boolean hasCustomColor() {
-        return false;
-    }
-
-    @Override
-    public int getCustomColor() {
-        return 0;
+    public int getCustomColor(int layer, int color) {
+        return layer == -1 ? -1 : color;
     }
 }

@@ -1,20 +1,19 @@
 package com.github.argon4w.acceleratedrendering.core.programs;
 
 import com.github.argon4w.acceleratedrendering.AcceleratedRenderingModEntry;
-import com.github.argon4w.acceleratedrendering.core.gl.programs.BarrierFlags;
-import com.github.argon4w.acceleratedrendering.core.programs.culling.LoadCullingProgramSelectorEvent;
+import com.github.argon4w.acceleratedrendering.core.backends.programs.BarrierFlags;
+import com.github.argon4w.acceleratedrendering.core.programs.processing.FixedPolygonProcessor;
 import com.github.argon4w.acceleratedrendering.core.programs.processing.LoadPolygonProcessorEvent;
 import com.github.argon4w.acceleratedrendering.core.programs.transform.FixedTransformProgramSelector;
 import com.github.argon4w.acceleratedrendering.core.programs.transform.LoadTransformProgramSelectorEvent;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
-
-import java.util.function.UnaryOperator;
 
 @EventBusSubscriber(modid = AcceleratedRenderingModEntry.MODID, bus = EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
 public class ComputeShaderPrograms {
@@ -73,22 +72,6 @@ public class ComputeShaderPrograms {
         event.loadFor(DefaultVertexFormat.POSITION_TEX_COLOR, parent -> new FixedTransformProgramSelector(CORE_POS_TEX_COLOR_VERTEX_TRANSFORM_KEY));
         event.loadFor(DefaultVertexFormat.POSITION_TEX, parent -> new FixedTransformProgramSelector(CORE_POS_TEX_VERTEX_TRANSFORM_KEY));
         event.loadFor(DefaultVertexFormat.POSITION_COLOR_TEX_LIGHTMAP, parent -> new FixedTransformProgramSelector(CORE_POS_COLOR_TEX_LIGHT_VERTEX_TRANSFORM_KEY));
-    }
-
-    @SubscribeEvent(priority = EventPriority.HIGHEST)
-    public static void onLoadCullingPrograms(LoadCullingProgramSelectorEvent event) {
-        event.loadFor(DefaultVertexFormat.NEW_ENTITY, UnaryOperator.identity());
-        event.loadFor(DefaultVertexFormat.POSITION_TEX_COLOR, UnaryOperator.identity());
-        event.loadFor(DefaultVertexFormat.POSITION_TEX, UnaryOperator.identity());
-        event.loadFor(DefaultVertexFormat.POSITION_COLOR_TEX_LIGHTMAP, UnaryOperator.identity());
-    }
-
-    @SubscribeEvent(priority = EventPriority.HIGHEST)
-    public static void onLoadPolygonProcessors(LoadPolygonProcessorEvent event) {
-        event.loadFor(DefaultVertexFormat.NEW_ENTITY, UnaryOperator.identity());
-        event.loadFor(DefaultVertexFormat.POSITION_TEX_COLOR, UnaryOperator.identity());
-        event.loadFor(DefaultVertexFormat.POSITION_TEX, UnaryOperator.identity());
-        event.loadFor(DefaultVertexFormat.POSITION_COLOR_TEX_LIGHTMAP, UnaryOperator.identity());
     }
 
     @SubscribeEvent

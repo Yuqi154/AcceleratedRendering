@@ -1,8 +1,8 @@
 package com.github.argon4w.acceleratedrendering.compat.iris.environments;
 
 import com.github.argon4w.acceleratedrendering.compat.iris.IrisRenderType;
+import com.github.argon4w.acceleratedrendering.core.backends.buffers.IServerBuffer;
 import com.github.argon4w.acceleratedrendering.core.buffers.environments.IBufferEnvironment;
-import com.github.argon4w.acceleratedrendering.core.gl.buffers.IServerBuffer;
 import com.github.argon4w.acceleratedrendering.core.meshes.ServerMesh;
 import com.github.argon4w.acceleratedrendering.core.programs.IPolygonProgramDispatcher;
 import com.github.argon4w.acceleratedrendering.core.programs.culling.ICullingProgramSelector;
@@ -142,7 +142,7 @@ public class IrisBufferEnvironment implements IBufferEnvironment {
 
         @Override
         public IServerBuffer getServerMeshBuffer() {
-            return ServerMesh.Builder.INSTANCE.getStorageBuffer(irisVertexFormat);
+            return ServerMesh.Builder.INSTANCE.storageBuffers.get(irisVertexFormat);
         }
 
         @Override

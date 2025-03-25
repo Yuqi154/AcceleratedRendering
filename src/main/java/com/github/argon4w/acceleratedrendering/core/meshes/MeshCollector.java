@@ -1,48 +1,141 @@
 package com.github.argon4w.acceleratedrendering.core.meshes;
 
-import com.github.argon4w.acceleratedrendering.core.gl.buffers.IClientBuffer;
-import com.github.argon4w.acceleratedrendering.core.utils.ByteUtils;
+import com.github.argon4w.acceleratedrendering.core.utils.MemUtils;
+import com.mojang.blaze3d.vertex.ByteBufferBuilder;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormatElement;
-import net.minecraft.client.renderer.RenderType;
 import net.minecraft.util.FastColor;
 import org.lwjgl.system.MemoryUtil;
 
-public class MeshCollector {
+public class MeshCollector implements VertexConsumer {
 
-    private final RenderType key;
-    private final IClientBuffer buffer;
-    private final int offset;
+    private final VertexFormat vertexFormat;;
+    private final ByteBufferBuilder buffer;
+
     private final int vertexSize;
-
     private final long posOffset;
     private final long colorOffset;
     private final long uv0Offset;
     private final long uv2Offset;
     private final long normalOffset;
 
+    private long vertexAddress;
     private int vertexCount;
 
-    public MeshCollector(
-            RenderType key,
-            IClientBuffer buffer,
-            int offset
-    ) {
-        this.key = key;
-        this.buffer = buffer;
+    public MeshCollector(VertexFormat vertexFormat) {
+        this.vertexFormat = vertexFormat;
+        this.buffer = new ByteBufferBuilder(1024);
+
+        this.vertexSize = this.vertexFormat.getVertexSize();
+        this.colorOffset = this.vertexFormat.getOffset(VertexFormatElement.COLOR);
+        this.posOffset = this.vertexFormat.getOffset(VertexFormatElement.POSITION);
+        this.uv0Offset = this.vertexFormat.getOffset(VertexFormatElement.UV);
+        this.uv2Offset = this.vertexFormat.getOffset(VertexFormatElement.UV2);
+        this.normalOffset = this.vertexFormat.getOffset(VertexFormatElement.NORMAL);
+
+        this.vertexAddress = -1L;
         this.vertexCount = 0;
-
-        this.offset = offset;
-
-        VertexFormat format = key.format;
-        this.vertexSize = format.getVertexSize();
-        this.colorOffset = format.getOffset(VertexFormatElement.COLOR);
-        this.posOffset = format.getOffset(VertexFormatElement.POSITION);
-        this.uv0Offset = format.getOffset(VertexFormatElement.UV);
-        this.uv2Offset = format.getOffset(VertexFormatElement.UV2);
-        this.normalOffset = format.getOffset(VertexFormatElement.NORMAL);
     }
 
+    @Override
+    public VertexConsumer addVertex(
+            float pX,
+            float pY,
+            float pZ
+    ) {
+        vertexCount++;
+        vertexAddress = buffer.reserve(vertexSize);
+
+        MemoryUtil.memPutFloat(vertexAddress + posOffset + 0L, pX);
+        MemoryUtil.memPutFloat(vertexAddress + posOffset + 4L, pY);
+        MemoryUtil.memPutFloat(vertexAddress + posOffset + 8L, pZ);
+
+        return this;
+    }
+
+    @Override
+    public VertexConsumer setColor(
+            int pRed,
+            int pGreen,
+            int pBlue,
+            int pAlpha
+    ) {
+        if (colorOffset == -1) {
+            return this;
+        }
+
+        if (vertexAddress == -1) {
+            throw new IllegalStateException("Vertex not building!");
+        }
+
+        MemoryUtil.memPutByte(vertexAddress + colorOffset + 0L, (byte) pRed);
+        MemoryUtil.memPutByte(vertexAddress + colorOffset + 1L, (byte) pGreen);
+        MemoryUtil.memPutByte(vertexAddress + colorOffset + 2L, (byte) pBlue);
+        MemoryUtil.memPutByte(vertexAddress + colorOffset + 3L, (byte) pAlpha);
+
+        return this;
+    }
+
+    @Override
+    public VertexConsumer setUv(float pU, float pV) {
+        if (uv0Offset == -1) {
+            return this;
+        }
+
+        if (vertexAddress == -1) {
+            throw new IllegalStateException("Vertex not building!");
+        }
+
+        MemoryUtil.memPutFloat(vertexAddress + uv0Offset + 0L, pU);
+        MemoryUtil.memPutFloat(vertexAddress + uv0Offset + 4L, pV);
+
+        return this;
+    }
+
+    @Override
+    public VertexConsumer setUv1(int pU, int pV) {
+        return this;
+    }
+
+    @Override
+    public VertexConsumer setUv2(int pU, int pV) {
+        if (uv2Offset == -1) {
+            return this;
+        }
+
+        if (vertexAddress == -1) {
+            throw new IllegalStateException("Vertex not building!");
+        }
+
+        MemoryUtil.memPutShort(vertexAddress + uv2Offset + 0L, (short) pU);
+        MemoryUtil.memPutShort(vertexAddress + uv2Offset + 2L, (short) pV);
+
+        return this;
+    }
+
+    @Override
+    public VertexConsumer setNormal(
+            float pNormalX,
+            float pNormalY,
+            float pNormalZ
+    ) {
+        if (normalOffset == -1) {
+            return this;
+        }
+
+        if (vertexAddress == -1) {
+            throw new IllegalStateException("Vertex not building!");
+        }
+
+        MemUtils.putNormal(vertexAddress + normalOffset + 0L, pNormalX);
+        MemUtils.putNormal(vertexAddress + normalOffset + 1L, pNormalY);
+        MemUtils.putNormal(vertexAddress + normalOffset + 2L, pNormalZ);
+
+        return this;
+    }
+
+    @Override
     public void addVertex(
             float pX,
             float pY,
@@ -56,35 +149,34 @@ public class MeshCollector {
             float pNormalY,
             float pNormalZ
     ) {
-        this.vertexCount++;
+        vertexCount++;
+        vertexAddress = buffer.reserve(vertexSize);
 
-        long vertex = this.buffer.reserve(vertexSize);
-
-        MemoryUtil.memPutFloat(vertex + posOffset + 0L, pX);
-        MemoryUtil.memPutFloat(vertex + posOffset + 4L, pY);
-        MemoryUtil.memPutFloat(vertex + posOffset + 8L, pZ);
+        MemoryUtil.memPutFloat(vertexAddress + posOffset + 0L, pX);
+        MemoryUtil.memPutFloat(vertexAddress + posOffset + 4L, pY);
+        MemoryUtil.memPutFloat(vertexAddress + posOffset + 8L, pZ);
 
         if (colorOffset != -1L) {
-            MemoryUtil.memPutInt(vertex + colorOffset + 0L, FastColor.ABGR32.fromArgb32(pColor));
+            MemoryUtil.memPutInt(vertexAddress + colorOffset + 0L, FastColor.ABGR32.fromArgb32(pColor));
         }
 
         if (uv0Offset != -1L) {
-            MemoryUtil.memPutFloat(vertex + uv0Offset + 0L, pU);
-            MemoryUtil.memPutFloat(vertex + uv0Offset + 4L, pV);
+            MemoryUtil.memPutFloat(vertexAddress + uv0Offset + 0L, pU);
+            MemoryUtil.memPutFloat(vertexAddress + uv0Offset + 4L, pV);
         }
 
         if (uv2Offset != -1L) {
-            MemoryUtil.memPutInt(vertex + uv2Offset + 0L, pPackedLight);
+            MemoryUtil.memPutInt(vertexAddress + uv2Offset + 0L, pPackedLight);
         }
 
         if (normalOffset != -1L) {
-            ByteUtils.putNormal(vertex + normalOffset + 0L, pNormalX);
-            ByteUtils.putNormal(vertex + normalOffset + 1L, pNormalY);
-            ByteUtils.putNormal(vertex + normalOffset + 2L, pNormalZ);
+            MemUtils.putNormal(vertexAddress + normalOffset + 0L, pNormalX);
+            MemUtils.putNormal(vertexAddress + normalOffset + 1L, pNormalY);
+            MemUtils.putNormal(vertexAddress + normalOffset + 2L, pNormalZ);
         }
     }
 
-    public IClientBuffer getBuffer() {
+    public ByteBufferBuilder getBuffer() {
         return buffer;
     }
 
@@ -92,11 +184,7 @@ public class MeshCollector {
         return vertexCount;
     }
 
-    public RenderType getKey() {
-        return key;
-    }
-
-    public int getOffset() {
-        return offset;
+    public VertexFormat getVertexFormat() {
+        return vertexFormat;
     }
 }

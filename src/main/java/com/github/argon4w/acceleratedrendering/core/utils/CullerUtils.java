@@ -1,13 +1,19 @@
 package com.github.argon4w.acceleratedrendering.core.utils;
 
+import com.github.argon4w.acceleratedrendering.core.buffers.graphs.IBufferGraph;
 import com.mojang.blaze3d.platform.NativeImage;
-import net.minecraft.client.model.geom.ModelPart;
+import net.minecraft.util.FastColor;
 import net.minecraft.util.Mth;
+import org.joml.Vector2f;
 import org.joml.Vector3f;
 
 public class CullerUtils {
 
-    public static boolean shouldCull(ModelPart.Vertex[] vertices, NativeImage image) {
+    public static boolean shouldCull(
+            Vertex[] vertices,
+            NativeImage image,
+            IBufferGraph graph
+    ) {
         if (image == null) {
             return false;
         }
@@ -19,10 +25,10 @@ public class CullerUtils {
         float maxV = 0.0f;
 
         if (vertices.length == 4) {
-            Vector3f vertex0 = new Vector3f(vertices[0].pos);
-            Vector3f vector1 = new Vector3f(vertices[1].pos).sub(vertex0);
-            Vector3f vector2 = new Vector3f(vertices[2].pos).sub(vertex0);
-            Vector3f vector3 = new Vector3f(vertices[3].pos).sub(vertex0);
+            Vector3f vertex0 = new Vector3f(vertices[0].getPosition());
+            Vector3f vector1 = new Vector3f(vertices[1].getPosition()).sub(vertex0);
+            Vector3f vector2 = new Vector3f(vertices[2].getPosition()).sub(vertex0);
+            Vector3f vector3 = new Vector3f(vertices[3].getPosition()).sub(vertex0);
 
             float length1 = vector1.cross(vector2).length();
             float length2 = vector1.cross(vector3).length();
@@ -32,9 +38,11 @@ public class CullerUtils {
             }
         }
 
-        for (ModelPart.Vertex vertex : vertices) {
-            float u = vertex.u;
-            float v = vertex.v;
+        for (Vertex vertex : vertices) {
+            Vector2f uv = vertex.getUv();
+
+            float u = graph.mapU(uv.x);
+            float v = graph.mapV(uv.y);
 
             u = u < 0 ? 1.0f + u : u;
             v = v < 0 ? 1.0f + v : v;
@@ -53,7 +61,7 @@ public class CullerUtils {
 
         for (int x = minX; x < maxX; x++) {
             for (int y = minY; y < maxY; y++) {
-                if ((image.getPixelRGBA(x, y) & 0xFF) != 0) {
+                if (FastColor.ABGR32.alpha(image.getPixelRGBA(x, y)) != 0) {
                     return false;
                 }
             }
